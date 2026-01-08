@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pond Plunge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Merriweather:wght@700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; touch-action: none; overflow: hidden; }
+        .serif { font-family: 'Merriweather', serif; }
+    </style>
+</head>
+<body class="bg-sky-50 text-stone-800">
+
+    <!-- UI -->
+    <div class="absolute inset-0 pointer-events-none flex flex-col p-4 z-10">
+        <div class="flex justify-between items-start">
+            <div class="bg-white/80 backdrop-blur rounded-xl px-4 py-2 shadow-sm border border-sky-100">
+                <span class="text-xs text-sky-800 uppercase tracking-wider font-semibold block">Find Factors of</span>
+                <span id="target-display" class="text-2xl font-bold text-sky-600 serif">12</span>
+            </div>
+            <div class="text-xl font-bold text-sky-900 bg-white/50 px-3 py-1 rounded-lg">
+                Score: <span id="score-display">0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlay -->
+    <div id="overlay" class="absolute inset-0 z-20 bg-sky-900/30 backdrop-blur-sm flex items-center justify-center">
+        <div class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center border-4 border-sky-100">
+            <h1 class="text-3xl text-sky-700 mb-2 serif">Pond Plunge</h1>
+            <p class="text-stone-500 mb-6">Drag to swim. Collect bubbles that are FACTORS of the target.</p>
+            <button id="start-btn" class="w-full py-3 px-6 bg-sky-500 hover:bg-sky-600 text-white rounded-full font-semibold shadow-lg shadow-sky-200 transition-all">
+                Dive In
+            </button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas" class="block w-full h-full"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const els = {
+            overlay: document.getElementById('overlay'),
+            startBtn: document.getElementById('start-btn'),
+            score: document.getElementById('score-display'),
+            target: document.getElementById('target-display')
+        };
+
+        let state = {
+            isPlaying: false,
+            score: 0,
+            target: 12,
+            player: { x: 0, y: 100, r: 15 },
+            bubbles: [],
+            obstacles: [],
+            lastSpawn: 0,
+            width: 0,
+            height: 0,
+            speed: 3
+        };
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            state.width = canvas.width;
+            state.height = canvas.height;
+            state.player.x = canvas.width / 2;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function getFactors(num) {
+            const factors = [];
+            for(let i=1; i<=num; i++) if(num % i === 0) factors.push(i);
+            return factors;
+        }
+
+        function spawnBubble() {
+            const factors = getFactors(state.target);
+            const isCorrect = Math.random() > 0.5;
+            let val;
+            if (isCorrect) {
+                val = factors[Math.floor(Math.random() * factors.length)];
+            } else {
+                do {
+                    val = Math.floor(Math.random() * 20) + 1;
+                } while (state.target % val === 0);
+            }
+
+            state.bubbles.push({
+                x: Math.random() * (state.width - 40) + 20,
+                y: state.height + 30,
+                r: 25,
+                val: val,
+                isCorrect: isCorrect
+            });
+        }
+
+        function startGame() {
+            state.score = 0;
+            state.bubbles = [];
+            state.target = [12, 16, 20, 24, 30, 36][Math.floor(Math.random()*6)];
+            els.target.innerText = state.target;
+            els.score.innerText = '0';
+            els.overlay.classList.add('hidden');
+            state.isPlaying = true;
+            state.player.x = state.width / 2;
+            loop();
+        }
+
+        function update() {
+            if (!state.isPlaying) return;
+
+            // Spawn
+            if (Math.random() < 0.02) spawnBubble();
+
+            // Move Bubbles
+            for (let i = state.bubbles.length - 1; i >= 0; i--) {
+                let b = state.bubbles[i];
+                b.y -= state.speed;
+
+                // Collision
+                const dx = state.player.x - b.x;
+                const dy = state.player.y - b.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+
+                if (dist < state.player.r + b.r) {
+                    if (b.isCorrect) {
+                        state.score += 10;
+                        els.score.innerText = state.score;
+                        // New target every 50 points
+                        if (state.score % 50 === 0) {
+                             state.target = [18, 28, 32, 40, 42, 45, 48][Math.floor(Math.random()*7)];
+                             els.target.innerText = state.target;
+                        }
+                    } else {
+                        gameOver();
+                    }
+                    state.bubbles.splice(i, 1);
+                    continue;
+                }
+
+                if (b.y < -50) state.bubbles.splice(i, 1);
+            }
+        }
+
+        function draw() {
+            // Background (Water gradient)
+            const grad = ctx.createLinearGradient(0, 0, 0, state.height);
+            grad.addColorStop(0, '#e0f2fe'); // Surface
+            grad.addColorStop(1, '#7dd3fc'); // Deep
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, state.width, state.height);
+
+            // Bubbles
+            ctx.font = "bold 18px Inter";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            
+            state.bubbles.forEach(b => {
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                ctx.fillStyle = '#0284c7'; // Sky 600
+                ctx.fillText(b.val, b.x, b.y);
+            });
+
+            // Player (Frog/Shape)
+            ctx.save();
+            ctx.translate(state.player.x, state.player.y);
+            
+            ctx.fillStyle = '#10b981'; // Emerald 500
+            ctx.beginPath();
+            ctx.arc(0, 0, state.player.r, 0, Math.PI*2);
+            ctx.fill();
+            // Eyes
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); 
+            ctx.arc(-6, -4, 5, 0, Math.PI*2); 
+            ctx.arc(6, -4, 5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#000';
+            ctx.beginPath(); 
+            ctx.arc(-6, -4, 2, 0, Math.PI*2); 
+            ctx.arc(6, -4, 2, 0, Math.PI*2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+
+        function loop() {
+            update();
+            draw();
+            if (state.isPlaying) requestAnimationFrame(loop);
+        }
+
+        function gameOver() {
+            state.isPlaying = false;
+            els.overlay.classList.remove('hidden');
+            els.startBtn.innerText = "Try Again";
+        }
+
+        // Controls
+        function handleMove(e) {
+            if (!state.isPlaying) return;
+            e.preventDefault();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            state.player.x = clientX;
+            
+            // Clamp
+            if (state.player.x < 20) state.player.x = 20;
+            if (state.player.x > state.width - 20) state.player.x = state.width - 20;
+        }
+
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('touchmove', handleMove, {passive: false});
+        els.startBtn.addEventListener('click', startGame);
+
+    </script>
+</body>
+</html>
