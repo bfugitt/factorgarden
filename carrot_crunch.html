@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Carrot Crunch</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Merriweather:wght@700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; touch-action: none; overflow: hidden; background: #fffbeb; }
+        .serif { font-family: 'Merriweather', serif; }
+    </style>
+</head>
+<body class="flex flex-col h-screen text-stone-800">
+
+    <!-- Header -->
+    <div class="p-4 bg-amber-100 flex justify-between items-center shadow-sm z-10">
+        <div>
+            <div class="text-xs text-amber-800 uppercase font-bold">Rule</div>
+            <div id="rule-display" class="text-xl font-bold text-amber-900 serif">Multiples of 3</div>
+        </div>
+        <div>
+            <div class="text-xs text-amber-800 uppercase font-bold text-right">Score</div>
+            <div id="score-display" class="text-xl font-bold text-amber-900 text-right">0</div>
+        </div>
+    </div>
+
+    <!-- Game Container -->
+    <div class="flex-1 relative bg-stone-50 overflow-hidden flex items-center justify-center p-4">
+        <canvas id="gameCanvas" class="shadow-lg rounded-xl bg-white"></canvas>
+        
+        <!-- Overlay -->
+        <div id="overlay" class="absolute inset-0 z-20 bg-stone-900/40 backdrop-blur-sm flex items-center justify-center">
+            <div class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center border-4 border-amber-200">
+                <h1 class="text-3xl text-amber-700 mb-2 serif">Carrot Crunch</h1>
+                <p class="text-stone-500 mb-6">Tap to move. Eat numbers that follow the rule. Avoid the beetles!</p>
+                <button id="start-btn" class="w-full py-3 px-6 bg-amber-500 hover:bg-amber-600 text-white rounded-full font-semibold shadow-lg shadow-amber-200 transition-all">
+                    Start Munching
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const els = {
+            overlay: document.getElementById('overlay'),
+            startBtn: document.getElementById('start-btn'),
+            score: document.getElementById('score-display'),
+            rule: document.getElementById('rule-display')
+        };
+
+        // Config
+        const GRID_W = 6;
+        const GRID_H = 5;
+        let CELL_SIZE = 60;
+        
+        let state = {
+            isPlaying: false,
+            score: 0,
+            lives: 3,
+            target: 3,
+            grid: [],
+            player: {x:0, y:0},
+            enemies: [],
+            lastEnemyMove: 0
+        };
+
+        function resize() {
+            // Fit canvas to container with aspect ratio
+            const container = canvas.parentElement;
+            const maxW = container.clientWidth - 20;
+            const maxH = container.clientHeight - 20;
+            
+            // Calculate optimal cell size
+            CELL_SIZE = Math.min(maxW / GRID_W, maxH / GRID_H);
+            
+            canvas.width = GRID_W * CELL_SIZE;
+            canvas.height = GRID_H * CELL_SIZE;
+        }
+        window.addEventListener('resize', resize);
+        
+        function initGrid() {
+            state.grid = [];
+            for(let y=0; y<GRID_H; y++) {
+                let row = [];
+                for(let x=0; x<GRID_W; x++) {
+                    // 30% chance of being correct
+                    const isCorrect = Math.random() < 0.3;
+                    let val;
+                    if(isCorrect) {
+                        val = state.target * (Math.floor(Math.random()*10)+1);
+                    } else {
+                        val = Math.floor(Math.random()*50)+1;
+                        if(val % state.target === 0) val++;
+                    }
+                    row.push({val: val, eaten: false});
+                }
+                state.grid.push(row);
+            }
+            state.grid[0][0].eaten = true; // Safe start
+        }
+
+        function startGame() {
+            resize();
+            state.score = 0;
+            state.target = 3;
+            state.player = {x:0, y:0};
+            state.enemies = [{x: GRID_W-1, y: GRID_H-1}];
+            
+            els.score.innerText = '0';
+            els.rule.innerText = `Multiples of ${state.target}`;
+            els.overlay.classList.add('hidden');
+            
+            initGrid();
+            state.isPlaying = true;
+            loop();
+        }
+
+        function update() {
+            if(!state.isPlaying) return;
+            
+            // Enemy Move (every second)
+            const now = Date.now();
+            if (now - state.lastEnemyMove > 1000) {
+                state.enemies.forEach(e => {
+                    const dx = state.player.x - e.x;
+                    const dy = state.player.y - e.y;
+                    
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        e.x += Math.sign(dx);
+                    } else {
+                        e.y += Math.sign(dy);
+                    }
+                });
+                state.lastEnemyMove = now;
+            }
+
+            // Collision
+            state.enemies.forEach(e => {
+                if(e.x === state.player.x && e.y === state.player.y) {
+                    gameOver();
+                }
+            });
+        }
+
+        function draw() {
+            // Background
+            ctx.fillStyle = '#fef3c7'; // Amber 100
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Grid Lines
+            ctx.strokeStyle = '#d6d3d1';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for(let x=0; x<=GRID_W; x++) {
+                ctx.moveTo(x*CELL_SIZE, 0); ctx.lineTo(x*CELL_SIZE, canvas.height);
+            }
+            for(let y=0; y<=GRID_H; y++) {
+                ctx.moveTo(0, y*CELL_SIZE); ctx.lineTo(canvas.width, y*CELL_SIZE);
+            }
+            ctx.stroke();
+
+            // Content
+            ctx.font = `bold ${CELL_SIZE/3}px Inter`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            for(let y=0; y<GRID_H; y++) {
+                for(let x=0; x<GRID_W; x++) {
+                    const cell = state.grid[y][x];
+                    if (!cell.eaten) {
+                        ctx.fillStyle = '#78350f'; // Amber 900
+                        ctx.fillText(cell.val, x*CELL_SIZE + CELL_SIZE/2, y*CELL_SIZE + CELL_SIZE/2);
+                    }
+                }
+            }
+
+            // Player (Orange Square/Carrot)
+            const px = state.player.x * CELL_SIZE;
+            const py = state.player.y * CELL_SIZE;
+            const pad = 5;
+            
+            ctx.fillStyle = '#f59e0b'; // Amber 500
+            ctx.beginPath();
+            ctx.roundRect(px+pad, py+pad, CELL_SIZE-pad*2, CELL_SIZE-pad*2, 8);
+            ctx.fill();
+            // Face
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(px+CELL_SIZE*0.3, py+CELL_SIZE*0.4, 4, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(px+CELL_SIZE*0.7, py+CELL_SIZE*0.4, 4, 0, Math.PI*2); ctx.fill();
+
+            // Enemies (Purple Bugs)
+            state.enemies.forEach(e => {
+                const ex = e.x * CELL_SIZE;
+                const ey = e.y * CELL_SIZE;
+                ctx.fillStyle = '#9333ea'; // Purple 600
+                ctx.beginPath();
+                ctx.arc(ex + CELL_SIZE/2, ey + CELL_SIZE/2, CELL_SIZE/3, 0, Math.PI*2);
+                ctx.fill();
+            });
+        }
+
+        function loop() {
+            update();
+            draw();
+            if(state.isPlaying) requestAnimationFrame(loop);
+        }
+
+        function gameOver() {
+            state.isPlaying = false;
+            els.overlay.classList.remove('hidden');
+            els.startBtn.innerText = "Try Again";
+        }
+
+        // Input
+        function handleInput(e) {
+            if(!state.isPlaying) return;
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            const gx = Math.floor((clientX - rect.left) / CELL_SIZE);
+            const gy = Math.floor((clientY - rect.top) / CELL_SIZE);
+
+            if (gx >= 0 && gx < GRID_W && gy >= 0 && gy < GRID_H) {
+                // Move Player (Instant move for now, grid click style)
+                // Limit to adjacent? No, let's allow tap anywhere for easy mobile play
+                const dist = Math.abs(gx - state.player.x) + Math.abs(gy - state.player.y);
+                
+                if (dist === 1) { // Only adjacent
+                    state.player.x = gx;
+                    state.player.y = gy;
+                    
+                    // Eat
+                    const cell = state.grid[gy][gx];
+                    if (!cell.eaten) {
+                        if (cell.val % state.target === 0) {
+                            state.score += 10;
+                            els.score.innerText = state.score;
+                            cell.eaten = true;
+                        } else {
+                            // Wrong eat
+                            state.score -= 5;
+                            els.score.innerText = state.score;
+                            // Maybe add a shake effect here
+                        }
+                    }
+                }
+            }
+        }
+
+        window.addEventListener('mousedown', handleInput);
+        window.addEventListener('touchstart', handleInput, {passive: false});
+        els.startBtn.addEventListener('click', startGame);
+
+    </script>
+</body>
+</html>
