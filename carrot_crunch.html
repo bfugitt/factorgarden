@@ -9,19 +9,41 @@
     <style>
         body { font-family: 'Inter', sans-serif; touch-action: none; overflow: hidden; background: #fffbeb; }
         .serif { font-family: 'Merriweather', serif; }
+        .btn-press { transform: translateY(2px); }
     </style>
 </head>
 <body class="flex flex-col h-screen text-stone-800">
 
     <!-- Header -->
-    <div class="p-4 bg-amber-100 flex justify-between items-center shadow-sm z-10">
-        <div>
-            <div class="text-xs text-amber-800 uppercase font-bold">Level <span id="level-display">1</span> Rule</div>
-            <div id="rule-display" class="text-xl font-bold text-amber-900 serif">Multiples of ?</div>
+    <div class="p-3 md:p-4 bg-amber-100 shadow-sm z-10 flex flex-wrap gap-2 justify-between items-center border-b border-amber-200">
+        <!-- Left: Game Info -->
+        <div class="flex flex-col">
+             <div class="text-xs text-amber-800 uppercase font-bold tracking-wider">Level <span id="level-display">1</span></div>
+             <div id="rule-display" class="text-lg md:text-xl font-bold text-amber-900 serif leading-tight">Multiples of ?</div>
         </div>
-        <div>
-            <div class="text-xs text-amber-800 uppercase font-bold text-right">Score</div>
-            <div id="score-display" class="text-xl font-bold text-amber-900 text-right">0</div>
+        
+        <!-- Right: Stats -->
+        <div class="flex items-center gap-3 md:gap-6">
+            <!-- Lives -->
+            <div class="text-center min-w-[3rem]">
+                <div class="text-[10px] md:text-xs text-amber-800 uppercase font-bold">Lives</div>
+                <div id="lives-display" class="text-xl font-bold text-red-600 leading-none">3</div>
+            </div>
+
+            <!-- Hints (Clickable) -->
+            <button id="hint-btn" class="text-center min-w-[3rem] active:scale-95 transition-transform group" title="Press 'H' for Hint">
+                <div class="text-[10px] md:text-xs text-amber-800 uppercase font-bold group-hover:text-blue-600 transition-colors">Hints</div>
+                <div class="flex items-center justify-center gap-1">
+                    <span id="hints-display" class="text-xl font-bold text-blue-600 leading-none">3</span>
+                    <span class="hidden md:inline-block text-[10px] bg-amber-200/50 px-1 rounded text-amber-700">H</span>
+                </div>
+            </button>
+
+            <!-- Score -->
+            <div class="text-center min-w-[4rem]">
+                <div class="text-[10px] md:text-xs text-amber-800 uppercase font-bold">Score</div>
+                <div id="score-display" class="text-xl font-bold text-amber-900 leading-none">0</div>
+            </div>
         </div>
     </div>
 
@@ -30,17 +52,34 @@
         <canvas id="gameCanvas" class="shadow-lg rounded-xl bg-white"></canvas>
         
         <!-- Overlay -->
-        <div id="overlay" class="absolute inset-0 z-20 bg-stone-900/40 backdrop-blur-sm flex items-center justify-center">
-            <div class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center border-4 border-amber-200">
+        <div id="overlay" class="absolute inset-0 z-20 bg-stone-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-xl max-w-sm w-full text-center border-4 border-amber-200">
                 <h1 class="text-3xl text-amber-700 mb-2 serif">Carrot Crunch</h1>
-                <p class="text-stone-500 mb-6">
-                    <span class="block font-bold mb-1">Move:</span> Arrow Keys or Tap Adjacent
-                    <span class="block font-bold mb-1 mt-2">Crunch:</span> Spacebar or Tap Self
-                </p>
-                <div class="text-sm text-stone-400 mb-4">Clear the board to advance!</div>
-                <button id="start-btn" class="w-full py-3 px-6 bg-amber-500 hover:bg-amber-600 text-white rounded-full font-semibold shadow-lg shadow-amber-200 transition-all">
+                <div class="text-left text-stone-600 mb-6 space-y-2 text-sm md:text-base bg-amber-50 p-4 rounded-lg">
+                    <div class="flex justify-between">
+                        <span class="font-bold">Move:</span> 
+                        <span>Arrows / Tap</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="font-bold">Crunch:</span> 
+                        <span>Spacebar / Tap Self</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="font-bold">Hint:</span> 
+                        <span>'H' Key / Icon</span>
+                    </div>
+                </div>
+                <div class="text-sm text-stone-400 mb-4 font-medium">Clear the board to advance!</div>
+                <button id="start-btn" class="w-full py-3 px-6 bg-amber-500 hover:bg-amber-600 text-white rounded-full font-semibold shadow-lg shadow-amber-200 transition-all active:scale-95">
                     Start Munching
                 </button>
+            </div>
+        </div>
+        
+        <!-- Game Over Message (hidden by default) -->
+        <div id="msg-toast" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-0 transition-opacity duration-300 z-30">
+            <div class="bg-red-500 text-white px-6 py-3 rounded-full font-bold shadow-lg text-lg animate-bounce">
+                Ouch!
             </div>
         </div>
     </div>
@@ -53,17 +92,23 @@
             startBtn: document.getElementById('start-btn'),
             score: document.getElementById('score-display'),
             rule: document.getElementById('rule-display'),
-            level: document.getElementById('level-display')
+            level: document.getElementById('level-display'),
+            lives: document.getElementById('lives-display'),
+            hints: document.getElementById('hints-display'),
+            hintBtn: document.getElementById('hint-btn'),
+            msg: document.getElementById('msg-toast')
         };
 
         // --- GAME CONFIGURATION ---
-        // Change these numbers to tweak the difficulty!
         const CONFIG = {
             GRID_W: 6,
             GRID_H: 5,
-            INITIAL_ENEMY_SPEED: 1500, // ms per move (Higher = Slower/Easier)
-            SPEED_INCREASE_PER_LEVEL: 150, // ms to subtract per level (Faster)
-            MIN_ENEMY_SPEED: 400 // Fastest speed cap
+            INITIAL_ENEMY_SPEED: 1500, // ms per move (Higher = Slower)
+            SPEED_INCREASE_PER_LEVEL: 150, 
+            MIN_ENEMY_SPEED: 400,
+            INITIAL_LIVES: 3,         // <--- New Config
+            HINTS_PER_LEVEL: 3,       // <--- New Config
+            HINT_DURATION: 1000       // ms to show hint
         };
 
         let CELL_SIZE = 60;
@@ -72,12 +117,15 @@
             isPlaying: false,
             score: 0,
             level: 1,
+            lives: CONFIG.INITIAL_LIVES,
+            hints: CONFIG.HINTS_PER_LEVEL,
             target: 3,
             grid: [],
             player: {x:0, y:0},
             enemies: [],
             lastEnemyMove: 0,
-            currentEnemySpeed: CONFIG.INITIAL_ENEMY_SPEED
+            currentEnemySpeed: CONFIG.INITIAL_ENEMY_SPEED,
+            hintActive: null // {x, y} of current hint cell
         };
 
         function resize() {
@@ -97,7 +145,7 @@
             for(let y=0; y<CONFIG.GRID_H; y++) {
                 let row = [];
                 for(let x=0; x<CONFIG.GRID_W; x++) {
-                    // Ensure we have enough correct answers (approx 30%)
+                    // ~30% correct answers
                     const isCorrect = Math.random() < 0.3;
                     let val;
                     if(isCorrect) {
@@ -105,28 +153,34 @@
                         possibleMultiples++;
                     } else {
                         val = Math.floor(Math.random()*50)+1;
-                        if(val % state.target === 0) val++; // Make sure it's wrong
+                        if(val % state.target === 0) val++; // Ensure wrong
                     }
                     row.push({val: val, eaten: false, isCorrectTarget: (val % state.target === 0)});
                 }
                 state.grid.push(row);
             }
-            state.grid[0][0].eaten = true; // Player start position is safe/empty
+            state.grid[0][0].eaten = true; // Player start position safe
             
-            // Safety check: Ensure at least one correct answer exists, or reload
+            // Retry if no answers generated
             if(possibleMultiples === 0) initGrid(); 
         }
 
-        function startLevel() {
-            // Pick a random target between 2 and 12 for 4th grade level
-            state.target = Math.floor(Math.random() * 11) + 2; 
-            
-            // Reset positions
+        function resetPositions() {
             state.player = {x:0, y:0};
+            // Ensure enemy doesn't spawn on player (0,0)
             state.enemies = [{x: CONFIG.GRID_W-1, y: CONFIG.GRID_H-1}];
+        }
+
+        function startLevel() {
+            state.target = Math.floor(Math.random() * 11) + 2; // 2-12
+            state.hints = CONFIG.HINTS_PER_LEVEL; // Reset hints per round
+            
+            resetPositions();
             
             // Update UI
             els.level.innerText = state.level;
+            els.lives.innerText = state.lives;
+            els.hints.innerText = state.hints;
             els.rule.innerText = `Multiples of ${state.target}`;
             
             initGrid();
@@ -136,6 +190,7 @@
             resize();
             state.score = 0;
             state.level = 1;
+            state.lives = CONFIG.INITIAL_LIVES;
             state.currentEnemySpeed = CONFIG.INITIAL_ENEMY_SPEED;
             els.score.innerText = '0';
             els.overlay.classList.add('hidden');
@@ -147,7 +202,6 @@
 
         function nextLevel() {
             state.level++;
-            // Make enemy faster
             state.currentEnemySpeed = Math.max(
                 CONFIG.MIN_ENEMY_SPEED, 
                 state.currentEnemySpeed - CONFIG.SPEED_INCREASE_PER_LEVEL
@@ -156,29 +210,26 @@
         }
 
         function checkLevelComplete() {
-            // Check if any uneaten correct answers remain
             for(let y=0; y<CONFIG.GRID_H; y++) {
                 for(let x=0; x<CONFIG.GRID_W; x++) {
                     const cell = state.grid[y][x];
                     if (cell.isCorrectTarget && !cell.eaten) {
-                        return false; // Still work to do
+                        return false; 
                     }
                 }
             }
-            return true; // All done!
+            return true;
         }
 
         function update() {
             if(!state.isPlaying) return;
             
-            // Enemy Move
             const now = Date.now();
             if (now - state.lastEnemyMove > state.currentEnemySpeed) {
                 state.enemies.forEach(e => {
                     const dx = state.player.x - e.x;
                     const dy = state.player.y - e.y;
                     
-                    // Simple tracking AI
                     if (Math.abs(dx) > Math.abs(dy)) {
                         e.x += Math.sign(dx);
                     } else {
@@ -191,9 +242,54 @@
             // Collision Check
             state.enemies.forEach(e => {
                 if(e.x === state.player.x && e.y === state.player.y) {
-                    gameOver();
+                    handleLifeLost();
                 }
             });
+        }
+
+        function handleLifeLost() {
+            state.lives--;
+            els.lives.innerText = state.lives;
+            
+            // Show feedback
+            els.msg.style.opacity = '1';
+            setTimeout(() => els.msg.style.opacity = '0', 1000);
+
+            if (state.lives <= 0) {
+                gameOver();
+            } else {
+                // Reset positions to give player a chance
+                resetPositions();
+            }
+        }
+
+        function useHint() {
+            if (!state.isPlaying || state.hints <= 0) return;
+
+            // Find valid targets
+            const targets = [];
+            for(let y=0; y<CONFIG.GRID_H; y++) {
+                for(let x=0; x<CONFIG.GRID_W; x++) {
+                    const cell = state.grid[y][x];
+                    if (cell.isCorrectTarget && !cell.eaten) {
+                        targets.push({x,y});
+                    }
+                }
+            }
+
+            if (targets.length > 0) {
+                state.hints--;
+                els.hints.innerText = state.hints;
+                
+                // Pick random target
+                const t = targets[Math.floor(Math.random() * targets.length)];
+                state.hintActive = t;
+                
+                // Turn off hint after duration
+                setTimeout(() => {
+                    state.hintActive = null;
+                }, CONFIG.HINT_DURATION);
+            }
         }
 
         function draw() {
@@ -214,16 +310,25 @@
             ctx.stroke();
 
             // Content
-            ctx.font = `bold ${CELL_SIZE/3}px Inter`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
 
             for(let y=0; y<CONFIG.GRID_H; y++) {
                 for(let x=0; x<CONFIG.GRID_W; x++) {
                     const cell = state.grid[y][x];
+                    const px = x*CELL_SIZE;
+                    const py = y*CELL_SIZE;
+
+                    // HINT EFFECT
+                    if (state.hintActive && state.hintActive.x === x && state.hintActive.y === y) {
+                        ctx.fillStyle = '#93c5fd'; // Blue 300
+                        ctx.fillRect(px+1, py+1, CELL_SIZE-2, CELL_SIZE-2);
+                    }
+
                     if (!cell.eaten) {
                         ctx.fillStyle = '#78350f'; // Amber 900
-                        ctx.fillText(cell.val, x*CELL_SIZE + CELL_SIZE/2, y*CELL_SIZE + CELL_SIZE/2);
+                        ctx.font = `bold ${CELL_SIZE/3}px Inter`;
+                        ctx.fillText(cell.val, px + CELL_SIZE/2, py + CELL_SIZE/2);
                     }
                 }
             }
@@ -265,7 +370,6 @@
             els.startBtn.innerText = "Try Again";
         }
 
-        // Logic
         function movePlayer(gx, gy) {
             state.player.x = gx;
             state.player.y = gy;
@@ -278,21 +382,19 @@
 
             if (!cell.eaten) {
                 if (cell.val % state.target === 0) {
-                    // Correct!
                     state.score += 10;
                     cell.eaten = true;
                     if(checkLevelComplete()) {
                         nextLevel();
                     }
                 } else {
-                    // Incorrect!
                     state.score -= 5;
                 }
                 els.score.innerText = state.score;
             }
         }
 
-        // Input Handling
+        // Input
         function handleInput(e) {
             if(!state.isPlaying) return;
             const rect = canvas.getBoundingClientRect();
@@ -304,12 +406,8 @@
 
             if (gx >= 0 && gx < CONFIG.GRID_W && gy >= 0 && gy < CONFIG.GRID_H) {
                 const dist = Math.abs(gx - state.player.x) + Math.abs(gy - state.player.y);
-                
-                if (dist === 1) { 
-                    movePlayer(gx, gy);
-                } else if (dist === 0) {
-                    crunch();
-                }
+                if (dist === 1) movePlayer(gx, gy);
+                else if (dist === 0) crunch();
             }
         }
 
@@ -319,6 +417,11 @@
             if (e.code === 'Space') {
                 e.preventDefault();
                 crunch();
+                return;
+            }
+            if (e.key.toLowerCase() === 'h') {
+                e.preventDefault();
+                useHint();
                 return;
             }
 
@@ -342,6 +445,10 @@
         window.addEventListener('touchstart', handleInput, {passive: false});
         window.addEventListener('keydown', handleKeydown);
         els.startBtn.addEventListener('click', startGame);
+        els.hintBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // prevent game click
+            useHint();
+        });
 
     </script>
 </body>
