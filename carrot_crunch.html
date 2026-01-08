@@ -16,8 +16,8 @@
     <!-- Header -->
     <div class="p-4 bg-amber-100 flex justify-between items-center shadow-sm z-10">
         <div>
-            <div class="text-xs text-amber-800 uppercase font-bold">Rule</div>
-            <div id="rule-display" class="text-xl font-bold text-amber-900 serif">Multiples of 3</div>
+            <div class="text-xs text-amber-800 uppercase font-bold">Level <span id="level-display">1</span> Rule</div>
+            <div id="rule-display" class="text-xl font-bold text-amber-900 serif">Multiples of ?</div>
         </div>
         <div>
             <div class="text-xs text-amber-800 uppercase font-bold text-right">Score</div>
@@ -37,6 +37,7 @@
                     <span class="block font-bold mb-1">Move:</span> Arrow Keys or Tap Adjacent
                     <span class="block font-bold mb-1 mt-2">Crunch:</span> Spacebar or Tap Self
                 </p>
+                <div class="text-sm text-stone-400 mb-4">Clear the board to advance!</div>
                 <button id="start-btn" class="w-full py-3 px-6 bg-amber-500 hover:bg-amber-600 text-white rounded-full font-semibold shadow-lg shadow-amber-200 transition-all">
                     Start Munching
                 </button>
@@ -51,86 +52,133 @@
             overlay: document.getElementById('overlay'),
             startBtn: document.getElementById('start-btn'),
             score: document.getElementById('score-display'),
-            rule: document.getElementById('rule-display')
+            rule: document.getElementById('rule-display'),
+            level: document.getElementById('level-display')
         };
 
-        // Config
-        const GRID_W = 6;
-        const GRID_H = 5;
+        // --- GAME CONFIGURATION ---
+        // Change these numbers to tweak the difficulty!
+        const CONFIG = {
+            GRID_W: 6,
+            GRID_H: 5,
+            INITIAL_ENEMY_SPEED: 1500, // ms per move (Higher = Slower/Easier)
+            SPEED_INCREASE_PER_LEVEL: 150, // ms to subtract per level (Faster)
+            MIN_ENEMY_SPEED: 400 // Fastest speed cap
+        };
+
         let CELL_SIZE = 60;
         
         let state = {
             isPlaying: false,
             score: 0,
-            lives: 3,
+            level: 1,
             target: 3,
             grid: [],
             player: {x:0, y:0},
             enemies: [],
-            lastEnemyMove: 0
+            lastEnemyMove: 0,
+            currentEnemySpeed: CONFIG.INITIAL_ENEMY_SPEED
         };
 
         function resize() {
-            // Fit canvas to container with aspect ratio
             const container = canvas.parentElement;
             const maxW = container.clientWidth - 20;
             const maxH = container.clientHeight - 20;
-            
-            // Calculate optimal cell size
-            CELL_SIZE = Math.min(maxW / GRID_W, maxH / GRID_H);
-            
-            canvas.width = GRID_W * CELL_SIZE;
-            canvas.height = GRID_H * CELL_SIZE;
+            CELL_SIZE = Math.min(maxW / CONFIG.GRID_W, maxH / CONFIG.GRID_H);
+            canvas.width = CONFIG.GRID_W * CELL_SIZE;
+            canvas.height = CONFIG.GRID_H * CELL_SIZE;
         }
         window.addEventListener('resize', resize);
         
         function initGrid() {
             state.grid = [];
-            for(let y=0; y<GRID_H; y++) {
+            let possibleMultiples = 0;
+
+            for(let y=0; y<CONFIG.GRID_H; y++) {
                 let row = [];
-                for(let x=0; x<GRID_W; x++) {
-                    // 30% chance of being correct
+                for(let x=0; x<CONFIG.GRID_W; x++) {
+                    // Ensure we have enough correct answers (approx 30%)
                     const isCorrect = Math.random() < 0.3;
                     let val;
                     if(isCorrect) {
                         val = state.target * (Math.floor(Math.random()*10)+1);
+                        possibleMultiples++;
                     } else {
                         val = Math.floor(Math.random()*50)+1;
-                        if(val % state.target === 0) val++;
+                        if(val % state.target === 0) val++; // Make sure it's wrong
                     }
-                    row.push({val: val, eaten: false});
+                    row.push({val: val, eaten: false, isCorrectTarget: (val % state.target === 0)});
                 }
                 state.grid.push(row);
             }
-            state.grid[0][0].eaten = true; // Safe start
+            state.grid[0][0].eaten = true; // Player start position is safe/empty
+            
+            // Safety check: Ensure at least one correct answer exists, or reload
+            if(possibleMultiples === 0) initGrid(); 
+        }
+
+        function startLevel() {
+            // Pick a random target between 2 and 12 for 4th grade level
+            state.target = Math.floor(Math.random() * 11) + 2; 
+            
+            // Reset positions
+            state.player = {x:0, y:0};
+            state.enemies = [{x: CONFIG.GRID_W-1, y: CONFIG.GRID_H-1}];
+            
+            // Update UI
+            els.level.innerText = state.level;
+            els.rule.innerText = `Multiples of ${state.target}`;
+            
+            initGrid();
         }
 
         function startGame() {
             resize();
             state.score = 0;
-            state.target = 3;
-            state.player = {x:0, y:0};
-            state.enemies = [{x: GRID_W-1, y: GRID_H-1}];
-            
+            state.level = 1;
+            state.currentEnemySpeed = CONFIG.INITIAL_ENEMY_SPEED;
             els.score.innerText = '0';
-            els.rule.innerText = `Multiples of ${state.target}`;
             els.overlay.classList.add('hidden');
             
-            initGrid();
+            startLevel();
             state.isPlaying = true;
             loop();
+        }
+
+        function nextLevel() {
+            state.level++;
+            // Make enemy faster
+            state.currentEnemySpeed = Math.max(
+                CONFIG.MIN_ENEMY_SPEED, 
+                state.currentEnemySpeed - CONFIG.SPEED_INCREASE_PER_LEVEL
+            );
+            startLevel();
+        }
+
+        function checkLevelComplete() {
+            // Check if any uneaten correct answers remain
+            for(let y=0; y<CONFIG.GRID_H; y++) {
+                for(let x=0; x<CONFIG.GRID_W; x++) {
+                    const cell = state.grid[y][x];
+                    if (cell.isCorrectTarget && !cell.eaten) {
+                        return false; // Still work to do
+                    }
+                }
+            }
+            return true; // All done!
         }
 
         function update() {
             if(!state.isPlaying) return;
             
-            // Enemy Move (every second)
+            // Enemy Move
             const now = Date.now();
-            if (now - state.lastEnemyMove > 1000) {
+            if (now - state.lastEnemyMove > state.currentEnemySpeed) {
                 state.enemies.forEach(e => {
                     const dx = state.player.x - e.x;
                     const dy = state.player.y - e.y;
                     
+                    // Simple tracking AI
                     if (Math.abs(dx) > Math.abs(dy)) {
                         e.x += Math.sign(dx);
                     } else {
@@ -140,7 +188,7 @@
                 state.lastEnemyMove = now;
             }
 
-            // Collision
+            // Collision Check
             state.enemies.forEach(e => {
                 if(e.x === state.player.x && e.y === state.player.y) {
                     gameOver();
@@ -157,10 +205,10 @@
             ctx.strokeStyle = '#d6d3d1';
             ctx.lineWidth = 1;
             ctx.beginPath();
-            for(let x=0; x<=GRID_W; x++) {
+            for(let x=0; x<=CONFIG.GRID_W; x++) {
                 ctx.moveTo(x*CELL_SIZE, 0); ctx.lineTo(x*CELL_SIZE, canvas.height);
             }
-            for(let y=0; y<=GRID_H; y++) {
+            for(let y=0; y<=CONFIG.GRID_H; y++) {
                 ctx.moveTo(0, y*CELL_SIZE); ctx.lineTo(canvas.width, y*CELL_SIZE);
             }
             ctx.stroke();
@@ -170,8 +218,8 @@
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
 
-            for(let y=0; y<GRID_H; y++) {
-                for(let x=0; x<GRID_W; x++) {
+            for(let y=0; y<CONFIG.GRID_H; y++) {
+                for(let x=0; x<CONFIG.GRID_W; x++) {
                     const cell = state.grid[y][x];
                     if (!cell.eaten) {
                         ctx.fillStyle = '#78350f'; // Amber 900
@@ -221,8 +269,6 @@
         function movePlayer(gx, gy) {
             state.player.x = gx;
             state.player.y = gy;
-            // NOTE: Eating has been removed from here. 
-            // You must now call crunch() explicitly.
         }
 
         function crunch() {
@@ -230,17 +276,17 @@
             const gy = state.player.y;
             const cell = state.grid[gy][gx];
 
-            // Only crunch if not already eaten
             if (!cell.eaten) {
                 if (cell.val % state.target === 0) {
                     // Correct!
                     state.score += 10;
                     cell.eaten = true;
-                    // TODO: Add visual 'munch' effect here
+                    if(checkLevelComplete()) {
+                        nextLevel();
+                    }
                 } else {
                     // Incorrect!
                     state.score -= 5;
-                    // Optional: Visual penalty feedback
                 }
                 els.score.innerText = state.score;
             }
@@ -256,14 +302,12 @@
             const gx = Math.floor((clientX - rect.left) / CELL_SIZE);
             const gy = Math.floor((clientY - rect.top) / CELL_SIZE);
 
-            if (gx >= 0 && gx < GRID_W && gy >= 0 && gy < GRID_H) {
+            if (gx >= 0 && gx < CONFIG.GRID_W && gy >= 0 && gy < CONFIG.GRID_H) {
                 const dist = Math.abs(gx - state.player.x) + Math.abs(gy - state.player.y);
                 
                 if (dist === 1) { 
-                    // Move to adjacent cell
                     movePlayer(gx, gy);
                 } else if (dist === 0) {
-                    // Tap self to CRUNCH
                     crunch();
                 }
             }
@@ -272,16 +316,13 @@
         function handleKeydown(e) {
             if(!state.isPlaying) return;
             
-            // Movement
-            let dx = 0; 
-            let dy = 0;
-            
             if (e.code === 'Space') {
                 e.preventDefault();
                 crunch();
                 return;
             }
 
+            let dx = 0, dy = 0;
             if(e.key === 'ArrowUp') dy = -1;
             else if(e.key === 'ArrowDown') dy = 1;
             else if(e.key === 'ArrowLeft') dx = -1;
@@ -289,11 +330,10 @@
             else return;
 
             e.preventDefault(); 
-
             const gx = state.player.x + dx;
             const gy = state.player.y + dy;
 
-            if (gx >= 0 && gx < GRID_W && gy >= 0 && gy < GRID_H) {
+            if (gx >= 0 && gx < CONFIG.GRID_W && gy >= 0 && gy < CONFIG.GRID_H) {
                 movePlayer(gx, gy);
             }
         }
