@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Seed Sorter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Merriweather:wght@700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; touch-action: none; overflow: hidden; }
+        h1, .serif { font-family: 'Merriweather', serif; }
+        
+        .floating-seed {
+            animation: float 3s ease-in-out infinite;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+        }
+    </style>
+</head>
+<body class="bg-stone-100 text-stone-800">
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 z-10">
+        <!-- Top Bar -->
+        <div class="flex justify-between items-start">
+            <div class="bg-white/90 backdrop-blur rounded-xl px-4 py-2 shadow-sm border border-stone-200">
+                <span class="text-xs text-stone-500 uppercase tracking-wider font-semibold block">Target</span>
+                <span id="target-display" class="text-2xl font-bold text-emerald-700 serif">Multiples of ?</span>
+            </div>
+            <div class="bg-white/90 backdrop-blur rounded-xl px-4 py-2 shadow-sm border border-stone-200">
+                <span class="text-xs text-stone-500 uppercase tracking-wider font-semibold block">Score</span>
+                <span id="score-display" class="text-2xl font-bold text-stone-700">0</span>
+            </div>
+        </div>
+        
+        <!-- Pause Button -->
+        <button id="pause-btn" class="pointer-events-auto absolute top-4 left-1/2 -translate-x-1/2 w-10 h-10 bg-white rounded-full shadow border border-stone-200 flex items-center justify-center hover:bg-stone-50">
+            <svg class="w-4 h-4 text-stone-600" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+        </button>
+    </div>
+
+    <!-- Start/End Overlay -->
+    <div id="overlay" class="absolute inset-0 z-20 bg-stone-900/40 backdrop-blur-sm flex items-center justify-center">
+        <div class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center border-4 border-emerald-100">
+            <h1 class="text-3xl text-emerald-800 mb-2">Seed Sorter</h1>
+            <p class="text-stone-500 mb-6">Tap the seeds that are multiples of the target number.</p>
+            
+            <div id="final-score" class="hidden mb-6">
+                <div class="text-4xl font-bold text-stone-800 mb-1">0</div>
+                <div class="text-sm text-stone-500 uppercase tracking-wide">Seeds Collected</div>
+            </div>
+
+            <button id="start-btn" class="w-full py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-semibold transition-transform active:scale-95 shadow-lg shadow-emerald-200">
+                Start Gardening
+            </button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas" class="block w-full h-full"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const els = {
+            overlay: document.getElementById('overlay'),
+            startBtn: document.getElementById('start-btn'),
+            score: document.getElementById('score-display'),
+            target: document.getElementById('target-display'),
+            finalScore: document.getElementById('final-score'),
+            pauseBtn: document.getElementById('pause-btn')
+        };
+
+        let state = {
+            isPlaying: false,
+            score: 0,
+            target: 2,
+            items: [],
+            lastSpawn: 0,
+            spawnRate: 2000,
+            speed: 2,
+            width: 0,
+            height: 0
+        };
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            state.width = canvas.width;
+            state.height = canvas.height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Game Logic
+        function startGame() {
+            state.score = 0;
+            state.items = [];
+            state.target = Math.floor(Math.random() * 8) + 2; // Target 2-9
+            state.spawnRate = 2000;
+            state.speed = state.width < 600 ? 2 : 3;
+            
+            els.score.innerText = state.score;
+            els.target.innerText = `Multiples of ${state.target}`;
+            els.overlay.classList.add('hidden');
+            els.finalScore.classList.add('hidden');
+            
+            state.isPlaying = true;
+            state.lastSpawn = performance.now();
+            requestAnimationFrame(loop);
+        }
+
+        function spawnItem() {
+            const isCorrect = Math.random() > 0.6;
+            let val;
+            if (isCorrect) {
+                val = state.target * (Math.floor(Math.random() * 10) + 1);
+            } else {
+                val = Math.floor(Math.random() * 50) + 1;
+                if (val % state.target === 0) val++; // Ensure incorrect
+            }
+
+            // Spawn visuals
+            const size = 50;
+            const item = {
+                x: -60, // Start off screen left
+                y: state.height / 2 - 25 + (Math.sin(Date.now()) * 20), // Slight variation
+                val: val,
+                isCorrect: val % state.target === 0,
+                size: size,
+                color: '#fff',
+                clicked: false,
+                scale: 1
+            };
+            state.items.push(item);
+        }
+
+        function update(dt) {
+            if (!state.isPlaying) return;
+
+            // Spawning
+            if (dt - state.lastSpawn > state.spawnRate) {
+                spawnItem();
+                state.lastSpawn = dt;
+                // Ramp up difficulty
+                if (state.spawnRate > 800) state.spawnRate -= 20;
+            }
+
+            // Move items
+            for (let i = state.items.length - 1; i >= 0; i--) {
+                const item = state.items[i];
+                item.x += state.speed;
+                
+                // Bobbing animation
+                item.y += Math.sin((item.x + dt) / 100) * 0.5;
+
+                // Remove if off screen
+                if (item.x > state.width + 50) {
+                    if (item.isCorrect && !item.clicked) {
+                        // Missed a correct one
+                        endGame();
+                    }
+                    state.items.splice(i, 1);
+                }
+            }
+        }
+
+        function draw() {
+            // Clear
+            ctx.fillStyle = '#f5f5f4'; // Stone-100
+            ctx.fillRect(0, 0, state.width, state.height);
+
+            // Draw Stream
+            const streamHeight = 160;
+            const midY = state.height / 2;
+            
+            ctx.beginPath();
+            ctx.moveTo(0, midY - streamHeight/2);
+            ctx.fillStyle = '#e0f2fe'; // Sky-100/Water
+            ctx.fillRect(0, midY - streamHeight/2, state.width, streamHeight);
+            
+            // Stream Borders
+            ctx.strokeStyle = '#bae6fd';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, midY - streamHeight/2);
+            ctx.lineTo(state.width, midY - streamHeight/2);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(0, midY + streamHeight/2);
+            ctx.lineTo(state.width, midY + streamHeight/2);
+            ctx.stroke();
+
+            // Draw Items (Seeds)
+            ctx.font = "bold 20px Inter";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            state.items.forEach(item => {
+                if (item.clicked) return; // Don't draw if clicked (animation could go here)
+
+                ctx.save();
+                ctx.translate(item.x, item.y);
+                
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.1)';
+                ctx.beginPath();
+                ctx.arc(4, 4, item.size/2, 0, Math.PI*2);
+                ctx.fill();
+
+                // Seed Body
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = '#059669'; // Emerald 600
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(0, 0, item.size/2, 0, Math.PI*2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Number
+                ctx.fillStyle = '#1c1917';
+                ctx.fillText(item.val, 0, 1);
+                
+                ctx.restore();
+            });
+        }
+
+        function loop(dt) {
+            update(dt);
+            draw();
+            if (state.isPlaying) requestAnimationFrame(loop);
+        }
+
+        function handleInput(e) {
+            if (!state.isPlaying) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+
+            // Check clicks
+            for (let i = state.items.length - 1; i >= 0; i--) {
+                const item = state.items[i];
+                const dx = x - item.x;
+                const dy = y - item.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+
+                if (dist < item.size/2 + 10) { // Hitbox padding
+                    if (item.isCorrect) {
+                        state.score += 10;
+                        els.score.innerText = state.score;
+                        state.items.splice(i, 1); // Remove immediately
+                    } else {
+                        endGame();
+                    }
+                    return;
+                }
+            }
+        }
+
+        function endGame() {
+            state.isPlaying = false;
+            els.overlay.classList.remove('hidden');
+            els.startBtn.innerText = "Try Again";
+            els.finalScore.innerText = state.score;
+            els.finalScore.classList.remove('hidden');
+        }
+
+        // Event Listeners
+        window.addEventListener('mousedown', handleInput);
+        window.addEventListener('touchstart', handleInput, {passive: false});
+        els.startBtn.addEventListener('click', startGame);
+        
+        els.pauseBtn.addEventListener('click', () => {
+            if (state.isPlaying) {
+                state.isPlaying = false;
+                els.pauseBtn.innerHTML = `<svg class="w-4 h-4 text-stone-600" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`; // Play icon
+            } else if (!state.isPlaying && els.overlay.classList.contains('hidden')) {
+                state.isPlaying = true;
+                state.lastSpawn = performance.now();
+                requestAnimationFrame(loop);
+                els.pauseBtn.innerHTML = `<svg class="w-4 h-4 text-stone-600" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`; // Pause icon
+            }
+        });
+
+    </script>
+</body>
+</html>
