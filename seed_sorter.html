@@ -72,14 +72,22 @@
             pauseBtn: document.getElementById('pause-btn')
         };
 
+        // --- CONFIGURATION ---
+        const CONFIG = {
+            BASE_SPEED: 1.5,         // How fast seeds move (pixels per frame). Lower = Slower.
+            SPAWN_MIN_MS: 1200,      // Minimum gap between seeds (fastest rate)
+            SPAWN_MAX_MS: 3500,      // Maximum gap between seeds (slowest rate)
+            TARGET_MIN: 2,           // Lowest number to practice
+            TARGET_MAX: 9            // Highest number to practice
+        };
+
         let state = {
             isPlaying: false,
             score: 0,
             target: 2,
             items: [],
             lastSpawn: 0,
-            spawnRate: 2000,
-            speed: 2,
+            nextSpawnDelay: 0,       // Time until next seed
             width: 0,
             height: 0
         };
@@ -97,9 +105,7 @@
         function startGame() {
             state.score = 0;
             state.items = [];
-            state.target = Math.floor(Math.random() * 8) + 2; // Target 2-9
-            state.spawnRate = 2000;
-            state.speed = state.width < 600 ? 2 : 3;
+            state.target = Math.floor(Math.random() * (CONFIG.TARGET_MAX - CONFIG.TARGET_MIN + 1)) + CONFIG.TARGET_MIN;
             
             els.score.innerText = state.score;
             els.target.innerText = `Multiples of ${state.target}`;
@@ -108,11 +114,17 @@
             
             state.isPlaying = true;
             state.lastSpawn = performance.now();
+            state.nextSpawnDelay = 1000; // First seed comes quickly
             requestAnimationFrame(loop);
         }
 
+        function getNextSpawnDelay() {
+            // Random time between MIN and MAX
+            return Math.random() * (CONFIG.SPAWN_MAX_MS - CONFIG.SPAWN_MIN_MS) + CONFIG.SPAWN_MIN_MS;
+        }
+
         function spawnItem() {
-            const isCorrect = Math.random() > 0.6;
+            const isCorrect = Math.random() > 0.6; // 40% chance of correct seed
             let val;
             if (isCorrect) {
                 val = state.target * (Math.floor(Math.random() * 10) + 1);
@@ -125,35 +137,35 @@
             const size = 50;
             const item = {
                 x: -60, // Start off screen left
-                y: state.height / 2 - 25 + (Math.sin(Date.now()) * 20), // Slight variation
+                y: state.height / 2 - 25 + (Math.sin(Date.now()) * 20), // Slight variation in Y start
                 val: val,
                 isCorrect: val % state.target === 0,
                 size: size,
                 color: '#fff',
                 clicked: false,
-                scale: 1
+                scale: 1,
+                floatOffset: Math.random() * 100 // Randomize float phase
             };
             state.items.push(item);
         }
 
-        function update(dt) {
+        function update(now) {
             if (!state.isPlaying) return;
 
-            // Spawning
-            if (dt - state.lastSpawn > state.spawnRate) {
+            // Spawning Logic
+            if (now - state.lastSpawn > state.nextSpawnDelay) {
                 spawnItem();
-                state.lastSpawn = dt;
-                // Ramp up difficulty
-                if (state.spawnRate > 800) state.spawnRate -= 20;
+                state.lastSpawn = now;
+                state.nextSpawnDelay = getNextSpawnDelay(); // Set random time for next seed
             }
 
             // Move items
             for (let i = state.items.length - 1; i >= 0; i--) {
                 const item = state.items[i];
-                item.x += state.speed;
+                item.x += CONFIG.BASE_SPEED;
                 
                 // Bobbing animation
-                item.y += Math.sin((item.x + dt) / 100) * 0.5;
+                item.y += Math.sin((item.x + item.floatOffset) / 100) * 0.5;
 
                 // Remove if off screen
                 if (item.x > state.width + 50) {
@@ -227,8 +239,8 @@
             });
         }
 
-        function loop(dt) {
-            update(dt);
+        function loop(now) {
+            update(now);
             draw();
             if (state.isPlaying) requestAnimationFrame(loop);
         }
